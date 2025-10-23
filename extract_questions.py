@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# extract_questions.py
+# extract_questions.py  –  works WITHOUT pdfplumber
 # -----------------------------------------------------------
 # 1. Extract text from textbook + test-bank PDF/TXT
 # 2. Detect chapter ranges for ch. 1-6
@@ -17,7 +17,13 @@ import logging
 from pathlib import Path
 from typing import List, Dict, Optional, Tuple
 
-import pdfplumber
+# PDF fallback: standard-lib-only pypdf (pre-installed on Streamlit Cloud)
+try:
+    import pypdf  # type: ignore
+    HAS_PDF = True
+except ModuleNotFoundError:  # local safety
+    HAS_PDF = False
+
 from rapidfuzz import fuzz
 from tqdm import tqdm
 
@@ -35,21 +41,22 @@ logging.getLogger().addHandler(console)
 
 # ---------- text extraction ----------
 def extract_text_from_pdf(path: str) -> str:
-    """Return plain text from PDF (or TXT)."""
+    """Return plain text from PDF (via pypdf) or TXT."""
     p = Path(path)
     if not p.exists():
         raise FileNotFoundError(path)
     if p.suffix.lower() == ".txt":
         return p.read_text(encoding="utf-8", errors="ignore")
-    parts: List[str] = []
-    with pdfplumber.open(p) as pdf:
-        for page in pdf.pages:
-            try:
-                parts.append(page.extract_text() or "")
-            except Exception as e:
-                logging.warning("page extract error: %s", e)
-                parts.append("")
-    return "\n\n".join(parts)
+
+    if not HAS_PDF:
+        raise RuntimeError("pypdf not available – cannot extract PDF text")
+
+    text_parts: List[str] = []
+    with p.open("rb") as f:
+        reader = pypdf.PdfReader(f)
+        for page in reader.pages:
+            text_parts.append(page.extract_text() or "")
+    return "\n\n".join(text_parts)
 
 
 # ---------- chapter detection ----------
@@ -62,7 +69,7 @@ CHAPTER_HDR_PATTERNS = [
 
 def detect_chapters(book_text: str, chapters_to_find: Tuple[int, ...] = (1, 2, 3, 4, 5, 6)) -> Dict[int, Dict]:
     """Return {chap_num: {'start':i,'end':i,'title':str,'text':str}}."""
-    idxs: List[Tuple[int, int, str]] = []  # (num, start_char, heading_line)
+    idxs: List[Tuple[int, int, str]] = []
     for m in re.finditer(r"(?m)^.*$", book_text):
         line, start = m.group(0), m.start()
         for pat in CHAPTER_HDR_PATTERNS:
