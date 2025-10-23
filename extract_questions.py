@@ -104,7 +104,6 @@ def parse_testbank_text(tb_text: str) -> List[Dict[str, str]]:
     lines = tb_text.splitlines()
     blocks: List[Dict[str, str]] = []
     current: List[str] = []
-    # numbered starter: 1)  1.  Q1  Question 1
     starter = re.compile(r"^\s*(?:Q(?:uestion)?\s*\d+|(\d{1,3})[.\)])", re.I)
     for line in lines:
         if starter.match(line):
